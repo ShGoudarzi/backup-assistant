@@ -22,5 +22,5 @@ curl -o /usr/bin/backup-assistant.sh -L https://raw.githubusercontent.com/ShGoud
 
 ## Usage
 ```
-backup-assistant.sh --help
+backup-assistant.sh 
 ```
