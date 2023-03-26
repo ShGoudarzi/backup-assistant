@@ -3,7 +3,7 @@ DATE=$(date +"%Y%m%d")
 NOW=$(date +"%d/%b/%Y:%H:%M:%S %:::z")
 HOSTNAME=$(hostname -s)
 LOG_FILE="/var/log/backup-assistant.log"
-tmp_log="/tmp/ftp-bash-fullbackup.log"
+tmp_log="/tmp/bash-fullbackup.log"
 
 pidfile=/var/run/ba.sh.pid
 config_path="/etc/backup-assistant"
@@ -77,20 +77,30 @@ function config_check() {
 ### Path ###
 local_save_path="/local-backup/"
 ftp_save_path="/ftp-backup/"
+ssh_save_path="/ssh-backup/"
 
 ### Encryption ###
 encryption_enable="no"
 encryption_name="$HOSTNAME"
 
-### FTP ###
+
+### FTP method ###
 ftp_enable="no"
 ftp_server="ftp.example.com"
 ftp_username="ftpuser"
 ftp_password="ftppassword"
 
+### SSH method ###
+ssh_enable="no"
+ssh_server="ssh.example.com"
+ssh_port=22
+ssh_username="root"
+
+
 #### Clean ###
 local_save_last_versions=4
 ftp_save_last_versions=12
+ssh_save_last_versions=12
 EOF
 
         cat <<EOF >>$intervalConfigFiles_path/$G_weekly_fileName
@@ -260,6 +270,40 @@ then
 fi
 
 
+### SSH Upload
+if [ "$ssh_enable" == "yes" ];
+then
+    yellow;
+    echo -e "Uploading to SSH-server..." | log_print
+    resetcolor;
+
+
+    for res in ${i_result_files[@]};
+    do  
+        input=$(echo $local_save_path | sed 's/\//\\\//g')
+        ssh_save_path=$(echo $ssh_save_path | sed 's/\//\\\//g')
+        path=$(dirname $res | sed -e "s/$input/$ssh_save_path/") 
+        ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no "mkdir -p /$path/"
+        rsync -avh -e "ssh -p $ssh_port -o StrictHostKeyChecking=no" $res $ssh_username@$ssh_server:/$path/ | log_print
+       
+        if [ $? -ne 0 ]
+        then
+            red;
+            echo -e "Uploading to SSH-server FAILD" | log_print
+            resetcolor;
+            exit 0;      
+        fi
+
+    done
+
+    green;
+    echo -e "Uploading to SSH-server has have been completed successfully." | log_print
+    resetcolor;
+
+fi
+
+
+
 sleep 1;
 ###########################
 ##### Cleaning #####
@@ -308,9 +352,7 @@ then
     do
         sleep 1
 
-        source_file=$(echo $source_file | cut -d "." -f 2)
-        local_path_dir=$local_save_path/$source_file
- 
+        source_file=$(echo $source_file | cut -d "." -f 2) 
         ftp_path_dir=$ftp_save_path/$source_file
 
         ftp -i -n $ftp_server <<EOMYF > $tmp_log
@@ -358,6 +400,43 @@ EOMYF
 fi
 
 
+### SSH
+if [ "$ssh_enable" == "yes" ];
+then
+    yellow;
+    echo -e "Cleaning SSH backups older than $ssh_save_last_versions last old versions..." | log_print
+    resetcolor;
+
+    i_ssh_queue=()
+    for source_file in ${i_config_files[@]};
+    do
+        source_file=$(echo $source_file | cut -d "." -f 2)
+        ssh_path_dir=$ssh_save_path/$source_file
+
+        
+        ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no <<EOMYF > $tmp_log
+        ls -ltr $ssh_path_dir
+EOMYF
+
+        count=$(( $(cat $tmp_log | grep "^-r" | wc -l) - $ssh_save_last_versions ))
+        ssh_dirs_list_path=$(cat $tmp_log | grep "^-r" | awk '{print $NF}' | head -n $count | awk -F ' ' -v awkssh_path_dir="$ssh_path_dir/" '{print awkssh_path_dir $1}' | xargs)
+        
+        i_ssh_queue+=($ssh_dirs_list_path)
+    done
+
+
+    if [ -z "$i_ssh_queue" ]; 
+    then
+        echo -e "ّNot need." | log_print
+    else
+        ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no "rm -rf ${i_ssh_queue[@]}"
+        echo -e "ّFiles: $files" | log_print
+    fi
+
+    green;
+    echo -e "Cleaning Done." | log_print
+    resetcolor;
+fi
 
 
 
@@ -379,5 +458,4 @@ done
 
 rm -rf $tmp_log
 exit 0
-
 
