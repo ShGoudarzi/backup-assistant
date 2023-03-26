@@ -242,6 +242,8 @@ sleep 1;
 ### FTP Upload
 if [ "$ftp_enable" == "yes" ];
 then
+    is_ok=1
+
     yellow;
     echo -e "Uploading to FTP-server..." | log_print
     resetcolor;
@@ -257,22 +259,27 @@ then
         then
             red;
             echo -e "Uploading to FTP-server FAILD" | log_print
-            resetcolor;
-            exit 0;      
+            resetcolor;   
+            is_ok=0   
         fi
 
     done
 
-    green;
-    echo -e "Uploading to FTP-server has have been completed successfully." | log_print
-    resetcolor;
 
+    if [ $is_ok -eq 1 ]
+    then
+      green;
+      echo -e "Uploading to FTP-server has have been completed successfully." | log_print
+      resetcolor;
+    fi
 fi
 
 
 ### SSH Upload
 if [ "$ssh_enable" == "yes" ];
 then
+    is_ok=1
+
     yellow;
     echo -e "Uploading to SSH-server..." | log_print
     resetcolor;
@@ -291,14 +298,17 @@ then
             red;
             echo -e "Uploading to SSH-server FAILD" | log_print
             resetcolor;
-            exit 0;      
+            is_ok=0    
         fi
 
     done
 
-    green;
-    echo -e "Uploading to SSH-server has have been completed successfully." | log_print
-    resetcolor;
+    if [ $is_ok -eq 1 ]
+    then
+      green;
+      echo -e "Uploading to SSH-server has have been completed successfully." | log_print
+      resetcolor;
+    fi
 
 fi
 
@@ -343,6 +353,8 @@ resetcolor;
 ### FTP
 if [ "$ftp_enable" == "yes" ];
 then
+    is_ok=1
+
     yellow;
     echo -e "Cleaning remote ftp backups older than $ftp_save_last_versions last old versions..." | log_print
     resetcolor;
@@ -384,10 +396,13 @@ EOMYF
             red;
             echo -e "Cleaning FTP-server FAILD" | log_print
             resetcolor;
-            exit 0;      
+            is_ok=0      
         fi
 
-        echo -e "ّFiles: ${i_ftp_queue[@]}" | log_print
+        if [ $is_ok -eq 1 ]
+        then
+          echo -e "ّFiles: ${i_ftp_queue[@]}" | log_print
+        fi
 
     else
         echo -e "ّNot need." | log_print
