@@ -1,12 +1,12 @@
 # backup-assistant
-Simple Bash script for Creating Full Backup of Linux files and Upload to FTP Server
+Simple Bash script for Creating Full Backup of Linux files and Upload to FTP,SSH Server
 
 
 + Backup custom files and directories
 + Config file:   `/etc/backup-assistant/main.conf`
 + Set different interval (`Daily`, `Weekly`, `Monthly`) for creating backup of each group of directories: `/etc/backup-assistant/source`
 + Encrypts backup file using GPG
-+ Send to FTP Server 
++ Send to FTP,SSH Server 
 + Auto delete old backup versions, created older than x last old versions ( from local and remote server )
 + Logging all the activities `/var/log/backup-assistant.log`
 + Easy to use as cron jobs
@@ -24,3 +24,6 @@ curl -o /usr/bin/backup-assistant.sh -L https://raw.githubusercontent.com/ShGoud
 ```
 backup-assistant.sh 
 ```
+
+#### Note
+ssh-key need for send backup through ssh!
