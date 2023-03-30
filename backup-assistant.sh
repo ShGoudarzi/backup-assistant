@@ -445,7 +445,7 @@ EOMYF
         echo -e "ّNot need." | log_print
     else
         ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no "rm -rf ${i_ssh_queue[@]}"
-        echo -e "ّFiles: $files" | log_print
+        echo -e "ّFiles: $ssh_dirs_list_path" | log_print
     fi
 
     green;
