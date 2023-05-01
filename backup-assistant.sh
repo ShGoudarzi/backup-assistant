@@ -3,7 +3,7 @@ DATE=$(date +"%Y%m%d")
 NOW=$(date +"%d/%b/%Y:%H:%M:%S %:::z")
 HOSTNAME=$(hostname -s)
 LOG_FILE="/var/log/backup-assistant.log"
-tmp_log="/tmp/bash-fullbackup.log"
+tmp_log="/tmp/backup-assistant.log"
 
 pidfile=/var/run/ba.sh.pid
 config_path="/etc/backup-assistant"
@@ -253,7 +253,7 @@ then
         input=$(echo $local_save_path | sed 's/\//\\\//g')
         ftp_save_path=$(echo $ftp_save_path | sed 's/\//\\\//g')
         path=$(dirname $res | sed -e "s/$input/$ftp_save_path/")
-        curl --show-error --connect-timeout 30 --retry 5 --retry-delay 60 --upload-file $res --ftp-create-dirs "ftp://$ftp_server:21/$path/" --user "$ftp_username:$ftp_password" 
+        curl --show-error --connect-timeout 10 --retry 3 --retry-delay 30 --upload-file $res --ftp-create-dirs "ftp://$ftp_server:21/$path/" --user "$ftp_username:$ftp_password"
        
         if [ $? -ne 0 ]
         then
@@ -331,9 +331,12 @@ do
   source_file=$(echo $source_file | cut -d "." -f 2)
   local_path_dir=$local_save_path/$source_file
 
-  count=$(( $(ls -ltr $local_path_dir | tail -n +2 | wc -l) - $local_save_last_versions ))
-  files=$(ls -ltr $local_path_dir | tail -n +2 | head -n $count | awk '{print $NF}' | awk -F ' ' -v awklocal_path_dir="$local_path_dir/" '{print awklocal_path_dir $1}' | xargs)
-  i_local_queue+=($files)
+  count=$(( $(ls -ltr $local_path_dir | grep "^-r" | wc -l) - $local_save_last_versions ))
+  if [ $count -gt 0 ]; 
+  then
+      files=$(ls -ltr $local_path_dir | grep "^-r" | head -n $count | awk '{print $NF}' | awk -F ' ' -v awklocal_path_dir="$local_path_dir/" '{print awklocal_path_dir $1}' | xargs)
+      i_local_queue+=($files)
+  fi
 
 done
 
@@ -343,11 +346,13 @@ then
 else
     rm -rf ${i_local_queue[@]}
     echo -e "ّFiles: $files" | log_print
+
+    green;
+    echo -e "Cleaning Done." | log_print
 fi
 
-green;
-echo -e "Cleaning Done." | log_print
 resetcolor;
+
 
 
 ### FTP
@@ -376,13 +381,19 @@ then
 EOMYF
 
         count=$(( $(cat $tmp_log | grep -v "drwxr" | wc -l) - $ftp_save_last_versions ))
-        ftp_dirs_list_path=$(cat $tmp_log | grep -v "drwxr" | awk '{print $NF}' | head -n $count | awk -F ' ' -v awkftp_path_dir="$ftp_path_dir/" '{print awkftp_path_dir $1}' | xargs)
-        i_ftp_queue+=($ftp_dirs_list_path)
+        if [ $count -gt 0 ]; 
+        then
+            ftp_dirs_list_path=$(cat $tmp_log | grep -v "drwxr" | awk '{print $NF}' | head -n $count | awk -F ' ' -v awkftp_path_dir="$ftp_path_dir/" '{print awkftp_path_dir $1}' | xargs)
+            i_ftp_queue+=($ftp_dirs_list_path)
+        fi
+      
     done
 
 
-    if [ ! -z "$i_ftp_queue" ]; 
+    if [ -z "$i_ftp_queue" ]; 
     then
+        echo -e "ّNot need." | log_print
+    else
 
         ftp -i -n $ftp_server <<EOMYF 
         user $ftp_username $ftp_password
@@ -391,25 +402,12 @@ EOMYF
         quit
 EOMYF
 
-        if [ $? -ne 0 ]
-        then
-            red;
-            echo -e "Cleaning FTP-server FAILD" | log_print
-            resetcolor;
-            is_ok=0      
-        fi
+        echo -e "ّFiles: ${i_ftp_queue[@]}" | log_print
 
-        if [ $is_ok -eq 1 ]
-        then
-          echo -e "ّFiles: ${i_ftp_queue[@]}" | log_print
-        fi
+        green;
+        echo -e "Cleaning FTP-server Done." | log_print
 
-    else
-        echo -e "ّNot need." | log_print
     fi
-
-    green;
-    echo -e "Cleaning FTP-server Done." | log_print
     resetcolor;
 
 fi
@@ -434,9 +432,12 @@ then
 EOMYF
 
         count=$(( $(cat $tmp_log | grep "^-r" | wc -l) - $ssh_save_last_versions ))
-        ssh_dirs_list_path=$(cat $tmp_log | grep "^-r" | awk '{print $NF}' | head -n $count | awk -F ' ' -v awkssh_path_dir="$ssh_path_dir/" '{print awkssh_path_dir $1}' | xargs)
-        
-        i_ssh_queue+=($ssh_dirs_list_path)
+        if [ $count -gt 0 ]; 
+        then
+          ssh_dirs_list_path=$(cat $tmp_log | grep "^-r" | head -n $count | awk '{print $NF}' | awk -F ' ' -v awkssh_path_dir="$ssh_path_dir/" '{print awkssh_path_dir $1}' | xargs)
+          i_ssh_queue+=($ssh_dirs_list_path)
+        fi
+
     done
 
 
@@ -446,10 +447,10 @@ EOMYF
     else
         ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no "rm -rf ${i_ssh_queue[@]}"
         echo -e "ّFiles: $ssh_dirs_list_path" | log_print
-    fi
 
-    green;
-    echo -e "Cleaning Done." | log_print
+        green;
+        echo -e "Cleaning Done." | log_print
+    fi
     resetcolor;
 fi
 
