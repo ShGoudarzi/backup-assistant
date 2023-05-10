@@ -20,6 +20,12 @@ G_weekly_fileName="backup.weekly"
 G_monthly_fileName="backup.monthly"
 
 
+#### STATUS 
+SSH_CONNECTION_STATUS=1
+FTP_CONNECTION_STATUS=1
+
+
+
 ### Colors
 red() {
   tput bold
@@ -259,7 +265,8 @@ then
         then
             red;
             echo -e "Uploading to FTP-server FAILD" | log_print
-            resetcolor;   
+            resetcolor;  
+            FTP_CONNECTION_STATUS=0 
             is_ok=0   
         fi
 
@@ -298,6 +305,7 @@ then
             red;
             echo -e "Uploading to SSH-server FAILD" | log_print
             resetcolor;
+            SSH_CONNECTION_STATUS=0
             is_ok=0    
         fi
 
@@ -356,7 +364,7 @@ resetcolor;
 
 
 ### FTP
-if [ "$ftp_enable" == "yes" ];
+if [ "$ftp_enable" == "yes" ] && [ $FTP_CONNECTION_STATUS == 1 ];
 then
     is_ok=1
 
@@ -414,7 +422,7 @@ fi
 
 
 ### SSH
-if [ "$ssh_enable" == "yes" ];
+if [ "$ssh_enable" == "yes" ] && [ $SSH_CONNECTION_STATUS == 1 ];
 then
     yellow;
     echo -e "Cleaning SSH backups older than $ssh_save_last_versions last old versions..." | log_print
@@ -474,4 +482,3 @@ done
 
 rm -rf $tmp_log
 exit 0
-
