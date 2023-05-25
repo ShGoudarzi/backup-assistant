@@ -92,10 +92,10 @@ function log_print() {
 }
 
 function checkDpnd {
-  command -v curl >/dev/null 2>&1 || { echo -e "I require 'curl' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
-	command -v gpg >/dev/null 2>&1 || { echo -e "I require 'gpg' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
-	command -v rsync >/dev/null 2>&1 || { echo -e "I require 'rsync' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
-  command -v ftp >/dev/null 2>&1 || { echo -e "I require 'ftp' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
+   command -v curl >/dev/null 2>&1 || { echo -e "I require 'curl' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
+   command -v gpg >/dev/null 2>&1 || { echo -e "I require 'gpg' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
+   command -v rsync >/dev/null 2>&1 || { echo -e "I require 'rsync' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
+   command -v ftp >/dev/null 2>&1 || { echo -e "I require 'ftp' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
 }
 
 function config_check() {
