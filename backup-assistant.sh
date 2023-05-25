@@ -1,4 +1,21 @@
 #!/bin/bash
+#===============================================================================
+#
+#           DIR: /etc/backup-assistant
+#
+#         USAGE: backup-assistant.sh 
+#
+#   DESCRIPTION: create a gz backup of your files and upload them to ftp,ssh server
+#
+#  REQUIREMENTS: curl, gpg, rsync, ftp 
+#        AUTHOR: Shayan Goudarzi, me@shayangoudarzi.ir
+#  ORGANIZATION: Linux
+#       CREATED: 09/16/2022
+#===============================================================================
+export TOP_PID=$$
+
+
+
 DATE=$(date +"%Y%m%d")
 NOW=$(date +"%d/%b/%Y:%H:%M:%S %:::z")
 HOSTNAME=$(hostname -s)
@@ -60,7 +77,7 @@ function check_if_running() {
     resetcolor;
     exit 0
   else
-    echo $$ >"$pidfile"
+    echo $TOP_PID >"$pidfile"
   fi
 }
 
@@ -72,6 +89,13 @@ function log_print() {
   while read data; do
     echo -e "$(date +"%d/%b/%Y:%H:%M:%S %:::z") $data" | tee -a $LOG_FILE
   done
+}
+
+function checkDpnd {
+  command -v curl >/dev/null 2>&1 || { echo -e "I require 'curl' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
+	command -v gpg >/dev/null 2>&1 || { echo -e "I require 'gpg' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
+	command -v rsync >/dev/null 2>&1 || { echo -e "I require 'rsync' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
+  command -v ftp >/dev/null 2>&1 || { echo -e "I require 'ftp' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
 }
 
 function config_check() {
@@ -127,6 +151,7 @@ echo -e "Preparing..." | log_print
 
 check_if_running
 finisher
+checkDpnd
 config_check
 
 #loading conf
