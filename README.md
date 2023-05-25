@@ -25,5 +25,10 @@ curl -o /usr/bin/backup-assistant.sh -L https://raw.githubusercontent.com/ShGoud
 backup-assistant.sh 
 ```
 
+## Remove
+```
+rm -rf /usr/bin/backup-assistant.sh /etc/backup-assistant /var/run/ba.sh.pid /var/log/backup-assistant.log
+```
+
 #### Note
 ssh-key need for send backup through ssh!
