@@ -3,7 +3,7 @@
 #
 #           DIR: /etc/backup-assistant
 #
-#         USAGE: backup-assistant.sh 
+#         USAGE: backup-assistant.sh , backup-assistant.sh --force
 #
 #   DESCRIPTION: create a gz backup of your files and upload them to ftp,ssh server
 #
@@ -13,7 +13,7 @@
 #       CREATED: 09/16/2022
 #===============================================================================
 export TOP_PID=$$
-
+export ARGS=($@)
 
 
 DATE=$(date +"%Y%m%d")
@@ -71,11 +71,32 @@ resetcolor() {
 
 
 ##### Functions #####
+
+function log_print() {
+  while read data; do
+    echo -e "$(date +"%d/%b/%Y:%H:%M:%S %:::z") $data" | tee -a $LOG_FILE
+  done
+}
+
 function check_if_running() {
-  if [ -f $pidfile ]; then
-    echo "script is already running"
+  if [ -f $pidfile ]; 
+  then
+
+    echo -e "script is already running"  | log_print
     resetcolor;
-    exit 0
+
+    local old_pid=$( cat $pidfile )
+    if [ "${ARGS[0]}" == "--force" ]; then
+        echo -e "clean script start..."  | log_print
+        kill -9 $old_pid
+        rm -rf $pidfile
+        echo $TOP_PID >"$pidfile"
+    else
+        echo -e "run script by --force to skip limitation "  | log_print
+        exit 0
+    fi
+
+
   else
     echo $TOP_PID >"$pidfile"
   fi
@@ -85,11 +106,7 @@ function finisher() {
   trap "rm -f -- '$pidfile'" EXIT
 }
 
-function log_print() {
-  while read data; do
-    echo -e "$(date +"%d/%b/%Y:%H:%M:%S %:::z") $data" | tee -a $LOG_FILE
-  done
-}
+
 
 function checkDpnd {
    command -v curl >/dev/null 2>&1 || { echo -e "I require 'curl' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
