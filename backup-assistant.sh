@@ -7,7 +7,7 @@
 #
 #   DESCRIPTION: create a gz backup of your files and upload them to ftp,ssh server
 #
-#  REQUIREMENTS: curl, gpg, rsync, ftp 
+#  REQUIREMENTS: curl, gpg, rsync, ftp
 #        AUTHOR: Shayan Goudarzi, me@shayangoudarzi.ir
 #  ORGANIZATION: Linux
 #       CREATED: 09/16/2022
@@ -16,31 +16,31 @@ export TOP_PID=$$
 export ARGS=($@)
 
 
-DATE=$(date +"%Y%m%d")
-NOW=$(date +"%d/%b/%Y:%H:%M:%S %:::z")
-HOSTNAME=$(hostname -s)
-LOG_FILE="/var/log/backup-assistant.log"
-tmp_log="/tmp/backup-assistant.log"
+hostname=$(hostname -s)
+pidFile=/var/run/ba.sh.pid
 
-pidfile=/var/run/ba.sh.pid
-config_path="/etc/backup-assistant"
-intervalConfigFiles_path="$config_path/source"
+nowShortDate=$(date +"%Y%m%d")
+nowFullDate=$(date +"%d/%b/%Y:%H:%M:%S %:::z")
+scriptConfigPath="/etc/backup-assistant"
+scriptSourceFilesPath="$scriptConfigPath/source"
+logMainFile="/var/log/backup-assistant.log"
+logTmpFile="/tmp/backup-assistant.log"
 
-week_day=$(date +"%u") 
-week_backup_day="5" # 5:friday
-
+week_day=$(date +"%u")
 month_day=$(date +"%d")
-month_backup_day="28"
 
 G_daily_fileName="backup.daily"
 G_weekly_fileName="backup.weekly"
 G_monthly_fileName="backup.monthly"
 
 
-#### STATUS 
+#### Default Status
 SSH_CONNECTION_STATUS=1
 FTP_CONNECTION_STATUS=1
 
+#### Default Variables
+week_backup_day="5"
+month_backup_day="29"
 
 
 ### Colors
@@ -72,63 +72,69 @@ resetcolor() {
 
 ##### Functions #####
 
-function log_print() {
+function logger() {
   while read data; do
-    echo -e "$(date +"%d/%b/%Y:%H:%M:%S %:::z") $data" | tee -a $LOG_FILE
+    echo -e "$(date +"%d/%b/%Y:%H:%M:%S %:::z") $data" | tee -a $logMainFile
   done
 }
 
-function check_if_running() {
-  if [ -f $pidfile ]; 
+function funCheckStart() {
+  if [ -f $pidFile ];
   then
 
-    echo -e "script is already running"  | log_print
+    echo -e "Script is already running"  | logger
     resetcolor;
 
-    local old_pid=$( cat $pidfile )
+    local old_pid=$( cat $pidFile )
     if [ "${ARGS[0]}" == "--force" ]; then
-        echo -e "clean script start..."  | log_print
+        echo -e "Fresh start..."  | logger
         kill -9 $old_pid
-        rm -rf $pidfile
-        echo $TOP_PID >"$pidfile"
+        rm -rf $pidFile
+        echo $TOP_PID >"$pidFile"
     else
-        echo -e "run script by --force to skip limitation "  | log_print
+        echo -e "run script by --force to skip limitation "  | logger
         exit 0
     fi
 
 
   else
-    echo $TOP_PID >"$pidfile"
+    echo $TOP_PID >"$pidFile"
   fi
 }
 
-function finisher() {
-  trap "rm -f -- '$pidfile'" EXIT
+function funCheckEnd() {
+  trap "rm -f -- '$pidFile'" EXIT
 }
 
 
 
-function checkDpnd {
-   command -v curl >/dev/null 2>&1 || { echo -e "I require 'curl' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
-   command -v gpg >/dev/null 2>&1 || { echo -e "I require 'gpg' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
-   command -v rsync >/dev/null 2>&1 || { echo -e "I require 'rsync' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
-   command -v ftp >/dev/null 2>&1 || { echo -e "I require 'ftp' but it's not installed. Please install it and try again." | log_print; kill -s 1 "$TOP_PID"; }
+function funCheckDependency {
+   command -v curl >/dev/null 2>&1 || { echo -e "I require 'curl' but it's not installed. Please install it and try again." | logger; kill -s 1 "$TOP_PID"; }
+   command -v gpg >/dev/null 2>&1 || { echo -e "I require 'gpg' but it's not installed. Please install it and try again." | logger; kill -s 1 "$TOP_PID"; }
+   command -v rsync >/dev/null 2>&1 || { echo -e "I require 'rsync' but it's not installed. Please install it and try again." | logger; kill -s 1 "$TOP_PID"; }
+   command -v sshpass >/dev/null 2>&1 || { echo -e "I require 'sshpass' but it's not installed. Please install it and try again." | logger; kill -s 1 "$TOP_PID"; }
+   command -v ftp >/dev/null 2>&1 || { echo -e "I require 'ftp' but it's not installed. Please install it and try again." | logger; kill -s 1 "$TOP_PID"; }
 }
 
-function config_check() {
-    if [ ! -f $config_path/main.conf ];
+function funFirstInstallation() {
+    if [ ! -f $scriptConfigPath/main.conf ];
     then
-        mkdir -p $intervalConfigFiles_path > /dev/null 2>&1
-        cat <<EOF > $config_path/main.conf
+        mkdir -p $scriptSourceFilesPath > /dev/null 2>&1
+        cat <<EOF > $scriptConfigPath/main.conf
+
+### Date ###
+week_backup_day="5"            # 5:friday
+month_backup_day="29"
+
 
 ### Path ###
 local_save_path="/local-backup/"
-ftp_save_path="/ftp-backup/"
+ftpSavePath="/ftp-backup/"
 ssh_save_path="/ssh-backup/"
 
 ### Encryption ###
 encryption_enable="no"
-encryption_name="$HOSTNAME"
+encryption_name="$hostname"
 
 
 ### FTP method ###
@@ -142,7 +148,7 @@ ssh_enable="no"
 ssh_server="ssh.example.com"
 ssh_port=22
 ssh_username="root"
-
+ssh_password=""              # if is null, script will use sshkey by default
 
 #### Clean ###
 local_save_last_versions=4
@@ -150,68 +156,70 @@ ftp_save_last_versions=12
 ssh_save_last_versions=12
 EOF
 
-        cat <<EOF >>$intervalConfigFiles_path/$G_weekly_fileName
-# Put you Absolute path bellow and seprate them by ENTER
+        cat <<EOF >>$scriptSourceFilesPath/$G_weekly_fileName
+# Put you Absolute sshProperPeriodSavePath bellow and seprate them by ENTER
 $HOME
 EOF
 
-        touch $intervalConfigFiles_path/$G_daily_fileName $intervalConfigFiles_path/$G_monthly_fileName
-        echo -e "$NOW script has been installed successfully\n$NOW write your paths in source config files: $intervalConfigFiles_path"
+        touch $scriptSourceFilesPath/$G_daily_fileName $scriptSourceFilesPath/$G_monthly_fileName
+        echo -e "$nowFullDate Script has been installed successfully\n$nowFullDate Write your paths in source config files: $scriptSourceFilesPath"
         exit 0
     fi
 }
 
 
-### init
-echo -e "###########################" | log_print
-echo -e "Preparing..." | log_print
+################
+##### Init
+################
+echo -e "###########################" | logger
+echo -e "Preparing..." | logger
 
-check_if_running
-finisher
-checkDpnd
-config_check
+##### Call Necessary Functions
+funCheckStart
+funCheckEnd
+funCheckDependency
+funFirstInstallation
 
-#loading conf
-source $config_path/main.conf
+##### Load Config File
+source $scriptConfigPath/main.conf
 
 
-### init
-i_config_files=()
-interval_config_files=$(find $intervalConfigFiles_path -type f | grep -E "$G_daily_fileName|$G_weekly_fileName|$G_monthly_fileName" | xargs)
-for interval_config_file in $interval_config_files;
+totalSourceFilesName=()
+scriptSourceFilesList=$(find $scriptSourceFilesPath -type f | grep -E "$G_daily_fileName|$G_weekly_fileName|$G_monthly_fileName" | xargs)
+for scriptSourceFile in $scriptSourceFilesList;
 do
-    if [ $(cat $interval_config_file | wc -l) -ne 0 ];
+    if [ $(cat $scriptSourceFile | wc -l) -ne 0 ];
     then
 
-        input_name=$(basename $interval_config_file)
-        case $input_name in 
+        scriptSourceFileName=$(basename $scriptSourceFile)
+        case $scriptSourceFileName in
 
            $G_daily_fileName)
-             i_config_files+=($input_name) 
+             totalSourceFilesName+=($scriptSourceFileName)
              ;;
 
            $G_weekly_fileName)
              if [ $week_day == $week_backup_day ];
              then
-                 i_config_files+=($input_name)
+                 totalSourceFilesName+=($scriptSourceFileName)
              fi
              ;;
 
            $G_monthly_fileName)
              if [ $month_day == $month_backup_day ];
              then
-                 i_config_files+=($input_name)
-             fi 
-             ;; 
+                 totalSourceFilesName+=($scriptSourceFileName)
+             fi
+             ;;
         esac
     fi
 
-done 
+done
 
 
-if [ -z "$i_config_files" ]; 
+if [ -z "$totalSourceFilesName" ];
 then
-    echo -e "Not found any source config files or today is not the backup day!" | log_print
+    echo -e "Not found any source config files or today is not the backup day!" | logger
     exit 0
 fi
 
@@ -222,61 +230,59 @@ sleep 1;
 ##### Creating Backup #####
 ###########################
 
-
-# Create Backup
 yellow;
-echo "Creating Backup archives..." | log_print
+echo "Creating Backup archives..." | logger
 resetcolor;
 
-i_result_files=()
-for source_file in ${i_config_files[@]};
+localGeneratedBackupsFullPathList=()
+for sourceFileName in ${totalSourceFilesName[@]};
 do
-    ext=$(echo $source_file | cut -d "." -f 2)
-    result_pre_path=$local_save_path/$ext
-    mkdir -p $result_pre_path > /dev/null 2>&1
+    backupPeriod=$(echo $sourceFileName | cut -d "." -f 2)
+    localPeriodSavePath=$local_save_path/$backupPeriod
+    mkdir -p $localPeriodSavePath > /dev/null 2>&1
 
-    source_file_path=$intervalConfigFiles_path/$source_file
-    source_file_contents=$(cat $source_file_path | sed '/^[[:space:]]*$/d' | sed '/^#/d' | xargs)
-    result=$result_pre_path/$ext-fullbackup-$HOSTNAME-$DATE.tar.gz
+    sourceFilePeriodName=$scriptSourceFilesPath/$sourceFileName
+    sourceFilePeriodContents=$(cat $sourceFilePeriodName | sed '/^[[:space:]]*$/d' | sed '/^#/d' | xargs)
+    backupResultFullPathName=$localPeriodSavePath/$backupPeriod-fullbackup-$hostname-$nowShortDate.tar.gz
 
-    tar -czf $result $source_file_contents > /dev/null 2>&1
-    i_result_files+=($result)
-      
+    tar -czf $backupResultFullPathName $sourceFilePeriodContents > /dev/null 2>&1
+    localGeneratedBackupsFullPathList+=($backupResultFullPathName)
+
 done
 green;
-echo -e "Backup archives has have been created successfully" | log_print
+echo -e "Backup archives has have been created successfully" | logger
 resetcolor;
 
 
 
-# GPG Encryption 
+# GPG Encryption
 if [ "$encryption_enable" == "yes" ];
 then
     yellow;
-    echo -e "Encrypting Backup archives..." | log_print
+    echo -e "Encrypting Backup archives..." | logger
     resetcolor;
 
     counter=0
-    for res in ${i_result_files[@]};
+    for localGeneratedBackupFile in ${localGeneratedBackupsFullPathList[@]};
     do
-        gpg --always-trust -e -r "$encryption_name" $res
+        gpg --always-trust -e -r "$encryption_name" $localGeneratedBackupFile
 
         if [ $? -ne 0 ]
         then
             red;
-            echo -e "Encrypting backup archives FAILD" | log_print
+            echo -e "Encrypting backup archives FAILD" | logger
             resetcolor;
-            exit 0;      
+            exit 0;
         fi
 
-        rm -rf $res
-        i_result_files[$counter]="$res.gpg"
+        rm -rf $localGeneratedBackupFile
+        localGeneratedBackupsFullPathList[$counter]="$localGeneratedBackupFile.gpg"
         counter=$counter+1
 
     done
 
     green;
-    echo -e "Encrypting backup archives has have been completed successfully" | log_print
+    echo -e "Encrypting backup archives has have been completed successfully" | logger
     resetcolor;
 fi
 
@@ -293,23 +299,23 @@ then
     is_ok=1
 
     yellow;
-    echo -e "Uploading to FTP-server..." | log_print
+    echo -e "Uploading to FTP-server..." | logger
     resetcolor;
 
-    for res in ${i_result_files[@]};
-    do  
-        input=$(echo $local_save_path | sed 's/\//\\\//g')
-        ftp_save_path=$(echo $ftp_save_path | sed 's/\//\\\//g')
-        path=$(dirname $res | sed -e "s/$input/$ftp_save_path/")
-        curl --show-error --connect-timeout 10 --retry 3 --retry-delay 30 --upload-file $res --ftp-create-dirs "ftp://$ftp_server:21/$path/" --user "$ftp_username:$ftp_password"
-       
+    for localGeneratedBackupFile in ${localGeneratedBackupsFullPathList[@]};
+    do
+        localSavePath=$(echo $local_save_path | sed 's/\//\\\//g')
+        ftpSavePath=$(echo $ftpSavePath | sed 's/\//\\\//g')
+        ftpProperPeriodSavePath=$(dirname $localGeneratedBackupFile | sed -e "s/$localSavePath/$ftpSavePath/")
+        curl --show-error --connect-timeout 10 --retry 3 --retry-delay 30 --upload-file $localGeneratedBackupFile --ftp-create-dirs "ftp://$ftp_server:21/$ftpProperPeriodSavePath/" --user "$ftp_username:$ftp_password"
+
         if [ $? -ne 0 ]
         then
             red;
-            echo -e "Uploading to FTP-server FAILD" | log_print
-            resetcolor;  
-            FTP_CONNECTION_STATUS=0 
-            is_ok=0   
+            echo -e "Uploading to FTP-server FAILD" | logger
+            resetcolor;
+            FTP_CONNECTION_STATUS=0
+            is_ok=0
         fi
 
     done
@@ -318,10 +324,11 @@ then
     if [ $is_ok -eq 1 ]
     then
       green;
-      echo -e "Uploading to FTP-server has have been completed successfully." | log_print
+      echo -e "Uploading to FTP-server has have been completed successfully." | logger
       resetcolor;
     fi
 fi
+
 
 
 ### SSH Upload
@@ -330,25 +337,31 @@ then
     is_ok=1
 
     yellow;
-    echo -e "Uploading to SSH-server..." | log_print
+    echo -e "Uploading to SSH-server..." | logger
     resetcolor;
 
 
-    for res in ${i_result_files[@]};
-    do  
-        input=$(echo $local_save_path | sed 's/\//\\\//g')
-        ssh_save_path=$(echo $ssh_save_path | sed 's/\//\\\//g')
-        path=$(dirname $res | sed -e "s/$input/$ssh_save_path/") 
-        ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no "mkdir -p /$path/"
-        rsync -avh -e "ssh -p $ssh_port -o StrictHostKeyChecking=no" $res $ssh_username@$ssh_server:/$path/ | log_print
-       
+    for localGeneratedBackupFile in ${localGeneratedBackupsFullPathList[@]};
+    do
+        localSavePath=$(echo $local_save_path | sed 's/\//\\\//g')
+        sshSavePath=$(echo $ssh_save_path | sed 's/\//\\\//g')
+        sshProperPeriodSavePath=$(dirname $localGeneratedBackupFile | sed -e "s/$localSavePath/$sshSavePath/")
+        if [ "$ssh_password" != "" ];
+        then
+            sshpass -p $ssh_password ssh -o StrictHostKeyChecking=no -t $ssh_username@$ssh_server -p $ssh_port  "mkdir -p /$sshProperPeriodSavePath/"
+            rsync -avh -e "sshpass -p $ssh_password ssh -p $ssh_port -o StrictHostKeyChecking=no" $localGeneratedBackupFile $ssh_username@$ssh_server:/$sshProperPeriodSavePath/ | logger
+        else
+            ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no "mkdir -p /$sshProperPeriodSavePath/"
+            rsync -avh -e "ssh -p $ssh_port -o StrictHostKeyChecking=no" $localGeneratedBackupFile $ssh_username@$ssh_server:/$sshProperPeriodSavePath/ | logger
+        fi
+
         if [ $? -ne 0 ]
         then
             red;
-            echo -e "Uploading to SSH-server FAILD" | log_print
+            echo -e "Uploading to SSH-server FAILD" | logger
             resetcolor;
             SSH_CONNECTION_STATUS=0
-            is_ok=0    
+            is_ok=0
         fi
 
     done
@@ -356,7 +369,7 @@ then
     if [ $is_ok -eq 1 ]
     then
       green;
-      echo -e "Uploading to SSH-server has have been completed successfully." | log_print
+      echo -e "Uploading to SSH-server has have been completed successfully." | logger
       resetcolor;
     fi
 
@@ -372,33 +385,33 @@ sleep 1;
 
 ### Local
 yellow;
-echo -e "Cleaning local backups older than $local_save_last_versions last old versions..." | log_print
+echo -e "Cleaning local backups older than $local_save_last_versions last old versions..." | logger
 resetcolor;
 
-i_local_queue=()
-for source_file in ${i_config_files[@]};
+localTotalCleaningList=()
+for sourceFileName in ${totalSourceFilesName[@]};
 do
-  source_file=$(echo $source_file | cut -d "." -f 2)
-  local_path_dir=$local_save_path/$source_file
+  backupPeriod=$(echo $sourceFileName | cut -d "." -f 2)
+  localPeriodSavePath=$local_save_path/$backupPeriod
 
-  count=$(( $(ls -ltr $local_path_dir | grep "^-r" | wc -l) - $local_save_last_versions ))
-  if [ $count -gt 0 ]; 
+  count=$(( $(ls -ltr $localPeriodSavePath | grep "^-r" | wc -l) - $local_save_last_versions ))
+  if [ $count -gt 0 ];
   then
-      files=$(ls -ltr $local_path_dir | grep "^-r" | head -n $count | awk '{print $NF}' | awk -F ' ' -v awklocal_path_dir="$local_path_dir/" '{print awklocal_path_dir $1}' | xargs)
-      i_local_queue+=($files)
+      files=$(ls -ltr $localPeriodSavePath | grep "^-r" | head -n $count | awk '{print $NF}' | awk -F ' ' -v awklocal_path_dir="$localPeriodSavePath/" '{print awklocal_path_dir $1}' | xargs)
+      localTotalCleaningList+=($files)
   fi
 
 done
 
-if [ -z "$i_local_queue" ]; 
+if [ -z "$localTotalCleaningList" ];
 then
-    echo -e "ّNot need." | log_print
+    echo -e "ّNot need." | logger
 else
-    rm -rf ${i_local_queue[@]}
-    echo -e "ّFiles: $files" | log_print
+    rm -rf ${localTotalCleaningList[@]}
+    echo -e "ّFiles: $files" | logger
 
     green;
-    echo -e "Cleaning Done." | log_print
+    echo -e "Cleaning Done." | logger
 fi
 
 resetcolor;
@@ -411,51 +424,51 @@ then
     is_ok=1
 
     yellow;
-    echo -e "Cleaning remote ftp backups older than $ftp_save_last_versions last old versions..." | log_print
+    echo -e "Cleaning remote ftp backups older than $ftp_save_last_versions last old versions..." | logger
     resetcolor;
 
-    i_ftp_queue=()
-    for source_file in ${i_config_files[@]};
+    ftpTotalCleaningList=()
+    for sourceFileName in ${totalSourceFilesName[@]};
     do
         sleep 1
 
-        source_file=$(echo $source_file | cut -d "." -f 2) 
-        ftp_path_dir=$ftp_save_path/$source_file
+        backupPeriod=$(echo $sourceFileName | cut -d "." -f 2)
+        ftp_path_dir=$ftp_save_path/$backupPeriod
 
-        ftp -i -n $ftp_server <<EOMYF > $tmp_log
+        ftp -i -n $ftp_server <<EOMYF > $logTmpFile
         user $ftp_username $ftp_password
         binary
         cd $ftp_path_dir
-        ls --sort 
+        ls --sort
         quit
 EOMYF
 
-        count=$(( $(cat $tmp_log | grep -v "drwxr" | wc -l) - $ftp_save_last_versions ))
-        if [ $count -gt 0 ]; 
+        count=$(( $(cat $logTmpFile | grep -v "drwxr" | wc -l) - $ftp_save_last_versions ))
+        if [ $count -gt 0 ];
         then
-            ftp_dirs_list_path=$(cat $tmp_log | grep -v "drwxr" | awk '{print $NF}' | head -n $count | awk -F ' ' -v awkftp_path_dir="$ftp_path_dir/" '{print awkftp_path_dir $1}' | xargs)
-            i_ftp_queue+=($ftp_dirs_list_path)
+            ftp_dirs_list_path=$(cat $logTmpFile | grep -v "drwxr" | awk '{print $NF}' | head -n $count | awk -F ' ' -v awkftp_path_dir="$ftp_path_dir/" '{print awkftp_path_dir $1}' | xargs)
+            ftpTotalCleaningList+=($ftp_dirs_list_path)
         fi
-      
+
     done
 
 
-    if [ -z "$i_ftp_queue" ]; 
+    if [ -z "$ftpTotalCleaningList" ];
     then
-        echo -e "ّNot need." | log_print
+        echo -e "ّNot need." | logger
     else
 
-        ftp -i -n $ftp_server <<EOMYF 
+        ftp -i -n $ftp_server <<EOMYF
         user $ftp_username $ftp_password
         binary
-        mdelete ${i_ftp_queue[@]}
+        mdelete ${ftpTotalCleaningList[@]}
         quit
 EOMYF
 
-        echo -e "ّFiles: ${i_ftp_queue[@]}" | log_print
+        echo -e "ّFiles: ${ftpTotalCleaningList[@]}" | logger
 
         green;
-        echo -e "Cleaning FTP-server Done." | log_print
+        echo -e "Cleaning FTP-server Done." | logger
 
     fi
     resetcolor;
@@ -467,39 +480,50 @@ fi
 if [ "$ssh_enable" == "yes" ] && [ $SSH_CONNECTION_STATUS == 1 ];
 then
     yellow;
-    echo -e "Cleaning SSH backups older than $ssh_save_last_versions last old versions..." | log_print
+    echo -e "Cleaning SSH backups older than $ssh_save_last_versions last old versions..." | logger
     resetcolor;
 
-    i_ssh_queue=()
-    for source_file in ${i_config_files[@]};
+    sshTotalCleaningList=()
+    for sourceFileName in ${totalSourceFilesName[@]};
     do
-        source_file=$(echo $source_file | cut -d "." -f 2)
-        ssh_path_dir=$ssh_save_path/$source_file
+        backupPeriod=$(echo $sourceFileName | cut -d "." -f 2)
+        ssh_path_dir=$ssh_save_path/$backupPeriod
 
-        
-        ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no <<EOMYF > $tmp_log
-        ls -ltr $ssh_path_dir
-EOMYF
-
-        count=$(( $(cat $tmp_log | grep "^-r" | wc -l) - $ssh_save_last_versions ))
-        if [ $count -gt 0 ]; 
+        if [ "$ssh_password" != "" ];
         then
-          ssh_dirs_list_path=$(cat $tmp_log | grep "^-r" | head -n $count | awk '{print $NF}' | awk -F ' ' -v awkssh_path_dir="$ssh_path_dir/" '{print awkssh_path_dir $1}' | xargs)
-          i_ssh_queue+=($ssh_dirs_list_path)
+            sshpass -p $ssh_password ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no <<EOMYF > $logTmpFile
+            ls -ltr $ssh_path_dir
+EOMYF
+        else
+            ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no <<EOMYF > $logTmpFile
+            ls -ltr $ssh_path_dir
+EOMYF
+        fi
+
+        count=$(( $(cat $logTmpFile | grep "^-r" | wc -l) - $ssh_save_last_versions ))
+        if [ $count -gt 0 ];
+        then
+          ssh_dirs_list_path=$(cat $logTmpFile | grep "^-r" | head -n $count | awk '{print $NF}' | awk -F ' ' -v awkssh_path_dir="$ssh_path_dir/" '{print awkssh_path_dir $1}' | xargs)
+          sshTotalCleaningList+=($ssh_dirs_list_path)
         fi
 
     done
 
 
-    if [ -z "$i_ssh_queue" ]; 
+    if [ -z "$sshTotalCleaningList" ];
     then
-        echo -e "ّNot need." | log_print
+        echo -e "ّNot need." | logger
     else
-        ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no "rm -rf ${i_ssh_queue[@]}"
-        echo -e "ّFiles: $ssh_dirs_list_path" | log_print
+        if [ "$ssh_password" != "" ];
+        then
+            sshpass -p $ssh_password ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no "rm -rf ${sshTotalCleaningList[@]}"
+        else
+            ssh -t $ssh_username@$ssh_server -p $ssh_port -o StrictHostKeyChecking=no "rm -rf ${sshTotalCleaningList[@]}"
+        fi
+        echo -e "ّFiles: $ssh_dirs_list_path" | logger
 
         green;
-        echo -e "Cleaning Done." | log_print
+        echo -e "Cleaning Done." | logger
     fi
     resetcolor;
 fi
@@ -507,20 +531,20 @@ fi
 
 
 ########## Final ###########
-echo -e "" | log_print
+echo -e "" | logger
 green;
-echo -e "*** Backup finished ***" | log_print
+echo -e "*** Backup finished ***" | logger
 resetcolor;
-echo -e "Backup files:" | log_print
+echo -e "Backup files:" | logger
 
-for res in ${i_result_files[@]};
+for localGeneratedBackupFile in ${localGeneratedBackupsFullPathList[@]};
 do
-    res=$(echo $res | sed "s/\/\//\//")
-    archive_size=$(ls -lh $res | awk '{print  $5}')
+    localGeneratedBackupFile=$(echo $localGeneratedBackupFile | sed "s/\/\//\//")
+    archive_size=$(ls -lh $localGeneratedBackupFile | awk '{print  $5}')
     yellow;
-    echo -e "$res : $archive_size" | log_print
+    echo -e "$localGeneratedBackupFile : $archive_size" | logger
     resetcolor;
 done
 
-rm -rf $tmp_log
+rm -rf $logTmpFile
 exit 0
