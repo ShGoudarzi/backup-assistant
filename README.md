@@ -30,6 +30,3 @@ backup-assistant.sh --force
 ```
 rm -rf /etc/backup-assistant /usr/bin/backup-assistant.sh /var/run/ba.sh.pid /var/log/backup-assistant.log
 ```
-
-#### Note
-ssh-key need for send backup through ssh!
