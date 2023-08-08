@@ -7,7 +7,7 @@
 #
 #   DESCRIPTION: create a gz backup of your files and upload them to ftp,ssh server
 #
-#  REQUIREMENTS: curl, gpg, rsync, ftp
+#  REQUIREMENTS: curl, gpg, rsync, sshpass, ftp
 #        AUTHOR: Shayan Goudarzi, me@shayangoudarzi.ir
 #  ORGANIZATION: Linux
 #       CREATED: 09/16/2022
